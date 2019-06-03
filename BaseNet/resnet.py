@@ -1,11 +1,8 @@
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.python.keras import backend as K
-from tensorflow.keras import Input
-from tensorflow.keras.layers import Add, Dense, Activation, Flatten, Conv2D, MaxPool2D, ZeroPadding2D, \
+from keras.layers import Input, Add, Activation, Conv2D, MaxPool2D, ZeroPadding2D, \
     AveragePooling2D, TimeDistributed
-from BaseNet.fixed_batch_normalization import FixedBatchNormalization
 
+from keras import backend as K
+from BaseNet.fixed_batch_normalization import FixedBatchNormalization
 bn_axis = 3
 
 
@@ -159,7 +156,7 @@ def conv_block_td(input_tensor, kernel_size, filters, stage, block, input_shape,
 
 
 def resnet_base(input_tensor=None, trainable=False):
-    ''' base_resnet, except the last block of resnet
+    ''' base_resnet, block 1 to 4
 
     :param input_tensor:
     :param trainable:
@@ -186,7 +183,7 @@ def resnet_base(input_tensor=None, trainable=False):
     print('NOTE: this code only support to keras 2.0.3, newest version this line will got errors. see trace back.')
     x = FixedBatchNormalization(axis=bn_axis, name='bn_conv1')(x)
     x = Activation('relu')(x)
-    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+    x = MaxPool2D((3, 3), strides=(2, 2))(x)
 
     x = conv_block(x, 3, [64, 64, 256], stage=2, block='a', strides=(1, 1), trainable=trainable)
     x = identity_block(x, 3, [64, 64, 256], stage=2, block='b', trainable=trainable)
@@ -207,21 +204,27 @@ def resnet_base(input_tensor=None, trainable=False):
     return x
 
 
-def classifier_layers(x, input_shape, trainable=False):
+def resnet_last(x, input_shape=None, trainable=False, detection_flag=False):
     ''' the 5th Block of resnet as the classifier layer, use time distributed
 
     :param x:
     :param input_shape:
     :param trainable:
-    :return:
+    :return: a feature map of base net --- resnet
     '''
-    # compile times on theano tend to be very high, so we use smaller ROI pooling regions to workaround
-    # (hence a smaller stride in the region that follows the ROI pool)
-    x = conv_block_td(x, 3, [512, 512, 2048], stage=5, block='a', input_shape=input_shape, strides=(2, 2),
-                      trainable=trainable)
+    if detection_flag:
+        x = conv_block_td(x, 3, [512, 512, 2048], stage=5, block='a', input_shape=input_shape, strides=(2, 2),
+                          trainable=trainable)
 
-    x = identity_block_td(x, 3, [512, 512, 2048], stage=5, block='b', trainable=trainable)
-    x = identity_block_td(x, 3, [512, 512, 2048], stage=5, block='c', trainable=trainable)
-    x = TimeDistributed(AveragePooling2D((7, 7)), name='avg_pool')(x)
+        x = identity_block_td(x, 3, [512, 512, 2048], stage=5, block='b', trainable=trainable)
+        x = identity_block_td(x, 3, [512, 512, 2048], stage=5, block='c', trainable=trainable)
+        x = TimeDistributed(AveragePooling2D((7, 7)), name='avg_pool')(x)
+    else:
+        x = conv_block(x, 3, [512, 512, 2048], stage=5, block='a', strides=(2, 2),
+                          trainable=trainable)
+
+        x = identity_block(x, 3, [512, 512, 2048], stage=5, block='b', trainable=trainable)
+        x = identity_block(x, 3, [512, 512, 2048], stage=5, block='c', trainable=trainable)
+        x = AveragePooling2D((7, 7))(x)
 
     return x
